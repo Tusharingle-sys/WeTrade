@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and approval role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 200 },
+        "contactPerson": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "businessLocation": { "type": "string", "maxLength": 250 },
+        "role": { "type": "string", "enum": ["admin", "seller", "buyer", "logistics"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
+        "accountType": { "type": "string", "enum": ["seller", "buyer", "logistics"] },
+        "businessDescription": { "type": "string", "maxLength": 1000 },
+        "emailVerified": { "type": "boolean" },
+        "reviewNotes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["uid", "email", "companyName", "contactPerson", "status", "role", "createdAt"]
+    },
+    "AccountRequest": {
+      "title": "AccountRequest",
+      "description": "Business registration request for WeTrade Trade Portal access",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "maxLength": 128 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 200 },
+        "contactPerson": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "businessLocation": { "type": "string", "maxLength": 250 },
+        "requestedAccountType": { "type": "string", "enum": ["seller", "buyer", "logistics"] },
+        "businessDescription": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
+        "reviewNotes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["requestId", "uid", "companyName", "contactPerson", "email", "requestedAccountType", "status", "createdAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Authorised WeTrade platform administrators",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles with role assignment and verification status"
+    },
+    "/accountRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/AccountRequest" },
+      "description": "Account registration requests pending or processed by WeTrade administrators"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted administrator identities"
+    }
+  }
+}

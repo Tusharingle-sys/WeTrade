@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global security helpers
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'password');
+    }
+
+    // Bootstrapped admin verification
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'ti1590091@gmail.com')
+      );
+    }
+
+    function isValidTimestamp(val) {
+      return val is timestamp || (val is string && val.size() <= 40);
+    }
+
+    // Validation for User Profile
+    function isValidUserProfile(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.companyName is string && data.companyName.size() <= 200 &&
+             data.contactPerson is string && data.contactPerson.size() <= 150 &&
+             data.status in ['pending', 'approved', 'rejected', 'suspended'] &&
+             data.role in ['admin', 'seller', 'buyer', 'logistics', 'pending'];
+    }
+
+    // Validation for Account Request
+    function isValidAccountRequest(data) {
+      return data.requestId is string && data.requestId.size() <= 128 &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.companyName is string && data.companyName.size() <= 200 &&
+             data.contactPerson is string && data.contactPerson.size() <= 150 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.requestedAccountType in ['seller', 'buyer', 'logistics'] &&
+             data.status in ['pending', 'approved', 'rejected', 'suspended'];
+    }
+
+    // 1. Users collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+
+      // Normal users create their profile with role 'pending' and status 'pending'
+      // Only admins or the bootstrapped runtime admin can create approved or admin profiles
+      allow create: if isValidId(userId) &&
+                       isSignedIn() &&
+                       isValidUserProfile(incoming()) &&
+                       (
+                         (isOwner(userId) && incoming().uid == request.auth.uid && incoming().status == 'pending' && incoming().role == 'pending') ||
+                         isAdmin() ||
+                         (isOwner(userId) && request.auth.token.email == 'ti1590091@gmail.com')
+                       );
+
+      // Self profile edits can only touch non-privileged fields
+      // Status, role, and review metadata can ONLY be changed by an administrator
+      allow update: if isValidId(userId) &&
+                       isSignedIn() &&
+                       isValidUserProfile(incoming()) &&
+                       (
+                         isAdmin() ||
+                         (
+                           isOwner(userId) &&
+                           incoming().uid == existing().uid &&
+                           incoming().email == existing().email &&
+                           incoming().role == existing().role &&
+                           incoming().status == existing().status &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'displayName', 'companyName', 'contactPerson', 'phone',
+                             'businessLocation', 'businessDescription', 'emailVerified', 'updatedAt'
+                           ])
+                         )
+                       );
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // 2. Account Registration Requests collection
+    match /accountRequests/{requestId} {
+      allow get: if isValidId(requestId) && (
+        (isSignedIn() && resource.data.uid == request.auth.uid) ||
+        isAdmin()
+      );
+
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(requestId) &&
+                       isSignedIn() &&
+                       isValidAccountRequest(incoming()) &&
+                       incoming().uid == request.auth.uid &&
+                       incoming().status == 'pending';
+
+      // Only administrators can review, approve, reject, or suspend requests
+      allow update: if isValidId(requestId) &&
+                       isAdmin() &&
+                       isValidAccountRequest(incoming());
+
+      allow delete: if isValidId(requestId) && isAdmin();
+    }
+
+    // 3. Trusted Administrators collection
+    match /admins/{adminId} {
+      allow get, list: if isSignedIn();
+
+      allow create: if isValidId(adminId) && (
+        isAdmin() ||
+        (isSignedIn() && request.auth.token.email == 'ti1590091@gmail.com' && request.auth.uid == adminId)
+      );
+
+      allow update, delete: if isValidId(adminId) && isAdmin();
+    }
+  }
+}

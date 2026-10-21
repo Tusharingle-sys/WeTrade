@@ -1,0 +1,6 @@
+{
+  "name": "WeTrade — B2B Sourcing, Sales & Trade Facilitation Solutions",
+  "description": "WeTrade connects small-scale sellers, producers, and manufacturers with qualified buyers, providing end-to-end trade coordination, price negotiation, order tracking, and logistics solutions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
