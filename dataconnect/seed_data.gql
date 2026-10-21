@@ -1,0 +1,101 @@
+mutation CreateSeedData @transaction {
+  user_insertMany(data: [
+    {
+      id: "770e8400-e29b-41d4-a716-446655440001",
+      name: "Alice Smith",
+      email: "alice@example.com"
+    },
+    {
+      id: "770e8400-e29b-41d4-a716-446655440002",
+      name: "Bob Jones",
+      email: "bob@example.com"
+    },
+    {
+      id: "770e8400-e29b-41d4-a716-446655440003",
+      name: "Charlie Brown",
+      email: "charlie@example.com"
+    }
+  ])
+  neighborhood_insertMany(data: [
+    {
+      id: "880e8400-e29b-41d4-a716-446655440001",
+      name: "Downtown",
+      description: "Heart of the city"
+    },
+    {
+      id: "880e8400-e29b-41d4-a716-446655440002",
+      name: "Suburbs",
+      description: "Quiet residential area"
+    },
+    {
+      id: "880e8400-e29b-41d4-a716-446655440003",
+      name: "Industrial Park",
+      description: "Business and manufacturing"
+    }
+  ])
+  post_insertMany(data: [
+    {
+      id: "990e8400-e29b-41d4-a716-446655440001",
+      title: "Lost Cat",
+      description: "Looking for my tabby cat",
+      postType: "notice",
+      status: "active",
+      userId: "770e8400-e29b-41d4-a716-446655440001",
+      neighborhoodId: "880e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      id: "990e8400-e29b-41d4-a716-446655440002",
+      title: "Garage Sale",
+      description: "Everything must go",
+      postType: "event",
+      status: "active",
+      userId: "770e8400-e29b-41d4-a716-446655440002",
+      neighborhoodId: "880e8400-e29b-41d4-a716-446655440002"
+    },
+    {
+      id: "990e8400-e29b-41d4-a716-446655440003",
+      title: "Community Cleanup",
+      description: "Join us this Saturday",
+      postType: "event",
+      status: "active",
+      userId: "770e8400-e29b-41d4-a716-446655440003",
+      neighborhoodId: "880e8400-e29b-41d4-a716-446655440003"
+    }
+  ])
+  comment_insertMany(data: [
+    {
+      content: "I hope you find your cat!",
+      createdAt: "2023-10-01T10:00:00Z",
+      userId: "770e8400-e29b-41d4-a716-446655440002",
+      postId: "990e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      content: "What time does it start?",
+      createdAt: "2023-10-02T11:00:00Z",
+      userId: "770e8400-e29b-41d4-a716-446655440001",
+      postId: "990e8400-e29b-41d4-a716-446655440002"
+    },
+    {
+      content: "I'll be there!",
+      createdAt: "2023-10-03T12:00:00Z",
+      userId: "770e8400-e29b-41d4-a716-446655440003",
+      postId: "990e8400-e29b-41d4-a716-446655440003"
+    }
+  ])
+  message_insertMany(data: [
+    {
+      content: "Hi, I saw your post.",
+      sentAt: "2023-10-01T15:00:00Z",
+      senderId: "770e8400-e29b-41d4-a716-446655440002",
+      recipientId: "770e8400-e29b-41d4-a716-446655440001",
+      postId: "990e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      content: "Thanks for the message!",
+      sentAt: "2023-10-01T16:00:00Z",
+      senderId: "770e8400-e29b-41d4-a716-446655440001",
+      recipientId: "770e8400-e29b-41d4-a716-446655440002",
+      postId: "990e8400-e29b-41d4-a716-446655440001"
+    }
+  ])
+}

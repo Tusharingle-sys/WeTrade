@@ -1,0 +1,39 @@
+type User @table {
+  name: String!
+  email: String!
+  locationPoint: Vector @col(size: 2)
+  bio: String
+  profileImageUrl: String
+}
+
+type Neighborhood @table {
+  name: String!
+  centerPoint: Vector @col(size: 2)
+  description: String
+}
+
+type Post @table {
+  title: String!
+  description: String!
+  postType: String!
+  status: String!
+  imageUrl: String
+  expiryDate: Date
+  user: User!
+  neighborhood: Neighborhood!
+}
+
+type Comment @table {
+  content: String!
+  createdAt: Timestamp!
+  user: User!
+  post: Post!
+}
+
+type Message @table {
+  content: String!
+  sentAt: Timestamp!
+  sender: User!
+  recipient: User!
+  post: Post
+}

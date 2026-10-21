@@ -1,0 +1,128 @@
+mutation CreateUser($name: String!, $email: String!, $bio: String, $profileImageUrl: String) @auth(level: USER) {
+  user_insert(data: {id_expr: "auth.uid", name: $name, email: $email, bio: $bio, profileImageUrl: $profileImageUrl})
+}
+
+mutation UpdateUser($name: String, $bio: String, $profileImageUrl: String) @auth(level: USER) {
+  user_update(key: {id_expr: "auth.uid"}, data: {name: $name, bio: $bio, profileImageUrl: $profileImageUrl})
+}
+
+mutation DeleteUser @auth(level: USER) {
+  user_delete(key: {id_expr: "auth.uid"})
+}
+
+query GetCurrentUser @auth(level: USER) {
+  user(key: {id_expr: "auth.uid"}) {
+    name
+    email
+    bio
+    profileImageUrl
+  }
+}
+
+query ListUsers @auth(level: PUBLIC, insecureReason: "Public directory of users") {
+  users {
+    name
+    profileImageUrl
+  }
+}
+
+mutation CreateNeighborhood($name: String!, $centerPoint: Vector, $description: String) @auth(level: USER) {
+  neighborhood_insert(data: {name: $name, centerPoint: $centerPoint, description: $description})
+}
+
+mutation UpdateNeighborhood($id: UUID!, $description: String) @auth(level: USER) {
+  neighborhood_update(key: {id: $id}, data: {description: $description})
+}
+
+mutation DeleteNeighborhood($id: UUID!) @auth(level: USER) {
+  neighborhood_delete(key: {id: $id})
+}
+
+query GetNeighborhood($id: UUID!) @auth(level: PUBLIC, insecureReason: "Publicly accessible neighborhood data") {
+  neighborhood(key: {id: $id}) {
+    name
+    description
+  }
+}
+
+query ListNeighborhoods @auth(level: PUBLIC, insecureReason: "Publicly accessible neighborhoods") {
+  neighborhoods {
+    name
+    id
+  }
+}
+
+mutation CreatePost($title: String!, $description: String!, $postType: String!, $status: String!, $neighborhoodId: UUID!) @auth(level: USER) {
+  post_insert(data: {title: $title, description: $description, postType: $postType, status: $status, userId_expr: "auth.uid", neighborhoodId: $neighborhoodId})
+}
+
+mutation UpdatePost($id: UUID!, $status: String) @auth(level: USER) {
+  post_update(key: {id: $id}, data: {status: $status})
+}
+
+mutation DeletePost($id: UUID!) @auth(level: USER) {
+  post_delete(key: {id: $id})
+}
+
+query GetPost($id: UUID!) @auth(level: PUBLIC, insecureReason: "Publicly viewable posts") {
+  post(key: {id: $id}) {
+    title
+    description
+    user { name }
+  }
+}
+
+query ListPosts @auth(level: PUBLIC, insecureReason: "Publicly viewable posts") {
+  posts {
+    title
+    status
+  }
+}
+
+mutation CreateComment($content: String!, $postId: UUID!) @auth(level: USER) {
+  comment_insert(data: {content: $content, postId: $postId, userId_expr: "auth.uid", createdAt_expr: "request.time"})
+}
+
+mutation UpdateComment($id: UUID!, $content: String) @auth(level: USER) {
+  comment_update(key: {id: $id}, data: {content: $content})
+}
+
+mutation DeleteComment($id: UUID!) @auth(level: USER) {
+  comment_delete(key: {id: $id})
+}
+
+query GetComment($id: UUID!) @auth(level: USER) {
+  comment(key: {id: $id}) {
+    content
+    createdAt
+  }
+}
+
+query ListCommentsByPost($postId: UUID!) @auth(level: PUBLIC, insecureReason: "Publicly viewable comments") {
+  comments(where: {postId: {eq: $postId}}) {
+    content
+    user { name }
+  }
+}
+
+mutation SendMessage($content: String!, $recipientId: UUID!, $postId: UUID) @auth(level: USER) {
+  message_insert(data: {content: $content, recipientId: $recipientId, postId: $postId, senderId_expr: "auth.uid", sentAt_expr: "request.time"})
+}
+
+mutation DeleteMessage($id: UUID!) @auth(level: USER) {
+  message_delete(key: {id: $id})
+}
+
+query GetMessage($id: UUID!) @auth(level: USER) {
+  message(key: {id: $id}) {
+    content
+    sentAt
+  }
+}
+
+query ListMyMessages @auth(level: USER) {
+  messages(where: {_or: [{senderId: {eq_expr: "auth.uid"}}, {recipientId: {eq_expr: "auth.uid"}}]}) {
+    content
+    sender { name }
+  }
+}
