@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { WeTradeLogo } from '../components/common/WeTradeLogo';
 import { useAuth } from '../context/AuthContext';
+import { PortalRole } from '../types';
 import {
   Mail,
   Lock,
@@ -40,6 +41,7 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [selectedRoleForGoogle, setSelectedRoleForGoogle] = useState<PortalRole>('seller');
 
   // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -92,7 +94,7 @@ export const LoginPage: React.FC = () => {
     clearAuthError();
     setIsSubmitting(true);
     try {
-      await loginWithGoogle();
+      await loginWithGoogle(selectedRoleForGoogle);
       // navigation handled by useEffect
     } catch (err) {
       // handled in context
@@ -257,12 +259,47 @@ export const LoginPage: React.FC = () => {
               </div>
               <div className="relative flex justify-center text-xs">
                 <span className="px-3 bg-white text-slate-400 uppercase tracking-wider text-[10px]">
-                  Or Sign In With Google
+                  Or Instant Sign In With Google
                 </span>
               </div>
             </div>
 
-            <div className="mt-3">
+            <div className="mt-3 space-y-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                  Choose your trade role for instant portal access:
+                </label>
+                <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRoleForGoogle('seller')}
+                    className={`py-1.5 px-2 rounded-lg font-semibold transition-all cursor-pointer ${
+                      selectedRoleForGoogle === 'seller' ? 'bg-white text-[#07145B] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Seller
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRoleForGoogle('buyer')}
+                    className={`py-1.5 px-2 rounded-lg font-semibold transition-all cursor-pointer ${
+                      selectedRoleForGoogle === 'buyer' ? 'bg-white text-[#07145B] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Buyer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRoleForGoogle('logistics')}
+                    className={`py-1.5 px-2 rounded-lg font-semibold transition-all cursor-pointer ${
+                      selectedRoleForGoogle === 'logistics' ? 'bg-white text-[#07145B] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Logistics
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={handleGoogleLogin}
@@ -287,7 +324,7 @@ export const LoginPage: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>Google Sign In</span>
+                <span>Continue with Google as {selectedRoleForGoogle.charAt(0).toUpperCase() + selectedRoleForGoogle.slice(1)}</span>
               </button>
             </div>
           </div>

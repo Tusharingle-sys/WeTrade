@@ -12,7 +12,7 @@
         "contactPerson": { "type": "string", "maxLength": 150 },
         "phone": { "type": "string", "maxLength": 50 },
         "businessLocation": { "type": "string", "maxLength": 250 },
-        "role": { "type": "string", "enum": ["admin", "seller", "buyer", "logistics"] },
+        "role": { "type": "string", "enum": ["admin", "seller", "buyer", "logistics", "pending"] },
         "status": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
         "accountType": { "type": "string", "enum": ["seller", "buyer", "logistics"] },
         "businessDescription": { "type": "string", "maxLength": 1000 },
@@ -58,6 +58,114 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "B2B Trade Purchase Order tracked through fulfillment milestones",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderNumber": { "type": "string", "maxLength": 64 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "sellerName": { "type": "string", "maxLength": 200 },
+        "buyerId": { "type": "string", "maxLength": 128 },
+        "buyerName": { "type": "string", "maxLength": 200 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "productName": { "type": "string", "maxLength": 200 },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 50 },
+        "totalAmount": { "type": "number" },
+        "commercialTerms": { "type": "string", "maxLength": 500 },
+        "paymentStatus": { "type": "string", "maxLength": 64 },
+        "currentMilestone": { "type": "string", "maxLength": 64 },
+        "isDelayed": { "type": "boolean" },
+        "delayReason": { "type": "string", "maxLength": 500 },
+        "expectedDeliveryDate": { "type": "string", "maxLength": 64 },
+        "confirmedDate": { "type": "string", "maxLength": 64 },
+        "logisticsRequired": { "type": "boolean" },
+        "logisticsPartnerId": { "type": "string", "maxLength": 128 },
+        "logisticsPartnerName": { "type": "string", "maxLength": 200 },
+        "trackingNumber": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "orderNumber", "sellerId", "buyerId", "productName", "quantity", "totalAmount", "currentMilestone"]
+    },
+    "Quotation": {
+      "title": "Quotation",
+      "description": "B2B Price quotation and negotiation record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "rfqNumber": { "type": "string", "maxLength": 64 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "sellerName": { "type": "string", "maxLength": 200 },
+        "buyerId": { "type": "string", "maxLength": 128 },
+        "buyerName": { "type": "string", "maxLength": 200 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "productName": { "type": "string", "maxLength": 200 },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 50 },
+        "sellerExpectedPrice": { "type": "number" },
+        "buyerTargetPrice": { "type": "number" },
+        "agreedProductPrice": { "type": "number" },
+        "weTradeFacilitationFee": { "type": "number" },
+        "estimatedLogisticsFee": { "type": "number" },
+        "applicableTaxes": { "type": "number" },
+        "totalEstimatedValue": { "type": "number" },
+        "status": { "type": "string", "enum": ["Draft", "Sent to Seller", "Under Negotiation", "Revised", "Accepted", "Declined"] },
+        "createdDate": { "type": "string", "maxLength": 64 },
+        "validUntil": { "type": "string", "maxLength": 64 },
+        "revisionsCount": { "type": "number" },
+        "commercialTerms": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "rfqNumber", "sellerId", "buyerId", "productName", "quantity", "status"]
+    },
+    "BuyerLead": {
+      "title": "BuyerLead",
+      "description": "Buyer RFQ inquiry and qualification lead",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 200 },
+        "contactPerson": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "city": { "type": "string", "maxLength": 100 },
+        "state": { "type": "string", "maxLength": 100 },
+        "businessType": { "type": "string", "maxLength": 100 },
+        "targetPriceBudget": { "type": "string", "maxLength": 100 },
+        "typicalOrderQuantity": { "type": "string", "maxLength": 100 },
+        "qualificationStatus": { "type": "string", "maxLength": 50 },
+        "lastFollowUp": { "type": "string", "maxLength": 64 },
+        "nextFollowUp": { "type": "string", "maxLength": 64 },
+        "notes": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "companyName", "contactPerson", "email", "qualificationStatus"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Catalog product listing available for sourcing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "sellerName": { "type": "string", "maxLength": 200 },
+        "sellerCity": { "type": "string", "maxLength": 100 },
+        "sellerState": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "indicativePrice": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 50 },
+        "moq": { "type": "number" },
+        "availableQuantity": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "badge": { "type": "string", "maxLength": 100 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "lastUpdated": { "type": "string", "maxLength": 64 },
+        "packagingDetails": { "type": "string", "maxLength": 500 },
+        "shelfLifeOrGrade": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name", "category", "sellerId", "indicativePrice", "unit", "moq", "status"]
     }
   },
   "firestore": {
@@ -72,6 +180,22 @@
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminRecord" },
       "description": "Trusted administrator identities"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "B2B Trade Orders with milestone tracking and logistics linkage"
+    },
+    "/quotations/{quotationId}": {
+      "schema": { "$ref": "#/entities/Quotation" },
+      "description": "B2B Price quotations, revisions, and commercial terms"
+    },
+    "/buyers/{buyerId}": {
+      "schema": { "$ref": "#/entities/BuyerLead" },
+      "description": "Buyer RFQ inquiries and CRM leads"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Commodity and industrial product catalog for sourcing"
     }
   }
 }

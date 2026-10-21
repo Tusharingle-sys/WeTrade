@@ -12,7 +12,13 @@ import {
   Truck,
   ArrowLeft,
   Send,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
+  RefreshCw,
+  ExternalLink,
+  TrendingUp,
+  TrendingDown,
+  Minus
 } from 'lucide-react';
 
 export const ProductDetailPage: React.FC = () => {
@@ -26,6 +32,36 @@ export const ProductDetailPage: React.FC = () => {
   const [buyerEmail, setBuyerEmail] = useState('');
   const [destinationCity, setDestinationCity] = useState('');
   const [submittedSim, setSubmittedSim] = useState(false);
+  const [spotData, setSpotData] = useState<any | null>(null);
+  const [spotLoading, setSpotLoading] = useState(false);
+  const [spotError, setSpotError] = useState<string | null>(null);
+
+  const fetchSpotBenchmark = async () => {
+    if (!product) return;
+    setSpotLoading(true);
+    setSpotError(null);
+    try {
+      const res = await fetch('/api/market-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commodity: product.name,
+          category: product.category,
+          query: `${product.name} spot rate mandi wholesale price India`
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSpotData(data);
+      } else {
+        setSpotError(data.error || 'Failed to fetch spot benchmark');
+      }
+    } catch (e: any) {
+      setSpotError(e.message || 'Network error');
+    } finally {
+      setSpotLoading(false);
+    }
+  };
 
   if (!product) {
     return (
@@ -119,6 +155,78 @@ export const ProductDetailPage: React.FC = () => {
                   <span className="text-sm font-bold text-slate-900">{product.sellerCity}, {product.sellerState}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Real-time Google Search Grounded Market Benchmark */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-sm font-bold text-[#07145B]">
+                    Google Grounded Mandi &amp; Spot Rate Benchmark
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchSpotBenchmark}
+                  disabled={spotLoading}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${spotLoading ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
+                  <span>{spotData ? 'Recheck Live Rates' : 'Check Live Spot Rates'}</span>
+                </button>
+              </div>
+
+              {!spotData && !spotLoading && (
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Verify current wholesale trading benchmarks, mandi arrival volumes, and export FOB indications via live Google Search grounding.
+                </p>
+              )}
+
+              {spotLoading && (
+                <div className="p-4 bg-slate-50 rounded-2xl animate-pulse space-y-2">
+                  <div className="h-4 bg-slate-200 rounded w-1/3" />
+                  <div className="h-3 bg-slate-200 rounded w-2/3" />
+                </div>
+              )}
+
+              {spotError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs">
+                  {spotError}
+                </div>
+              )}
+
+              {spotData && (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-2xl text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase font-mono">Spot Benchmark</span>
+                      <span className="text-base font-extrabold text-[#07145B] font-mono tabular-nums">{spotData.spotPriceRange}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase font-mono">30-Day Momentum</span>
+                      <div className="flex items-center gap-1 font-bold">
+                        {spotData.trend === 'up' && <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />}
+                        {spotData.trend === 'down' && <TrendingDown className="w-3.5 h-3.5 text-red-600" />}
+                        {spotData.trend === 'stable' && <Minus className="w-3.5 h-3.5 text-slate-500" />}
+                        <span className="capitalize">{spotData.trend} Trend</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">{spotData.summary}</p>
+                  {spotData.sources && spotData.sources.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-[11px]">
+                      <span className="text-slate-400">Sources:</span>
+                      {spotData.sources.slice(0, 3).map((s: any, idx: number) => (
+                        <a key={idx} href={s.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline flex items-center gap-1 font-medium">
+                          <span>{s.title}</span>
+                          <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Specifications Table */}

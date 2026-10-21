@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  query
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import {
   Seller,
   Product,
   BuyerLead,
@@ -195,7 +204,114 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // Firestore Live Synchronization for Orders, Quotations, Buyer Inquiries, and Products
+  useEffect(() => {
+    // 1. Orders
+    const unsubOrders = onSnapshot(
+      collection(db, 'orders'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Order[] = [];
+          snapshot.forEach((d) => list.push(d.data() as Order));
+          setOrders(list);
+        } else {
+          // Auto-seed initial orders to Firestore
+          INITIAL_ORDERS.forEach(async (ord) => {
+            try {
+              await setDoc(doc(db, 'orders', ord.id), ord);
+            } catch (e) {
+              console.warn('Order seed note:', e);
+            }
+          });
+        }
+      },
+      (err) => {
+        console.warn('Firestore orders sync note:', err.message);
+      }
+    );
+
+    // 2. Quotations
+    const unsubQuotations = onSnapshot(
+      collection(db, 'quotations'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Quotation[] = [];
+          snapshot.forEach((d) => list.push(d.data() as Quotation));
+          setQuotations(list);
+        } else {
+          INITIAL_QUOTATIONS.forEach(async (q) => {
+            try {
+              await setDoc(doc(db, 'quotations', q.id), q);
+            } catch (e) {
+              console.warn('Quotation seed note:', e);
+            }
+          });
+        }
+      },
+      (err) => {
+        console.warn('Firestore quotations sync note:', err.message);
+      }
+    );
+
+    // 3. Buyer Leads / Inquiries
+    const unsubBuyers = onSnapshot(
+      collection(db, 'buyers'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: BuyerLead[] = [];
+          snapshot.forEach((d) => list.push(d.data() as BuyerLead));
+          setBuyers(list);
+        } else {
+          INITIAL_BUYERS.forEach(async (b) => {
+            try {
+              await setDoc(doc(db, 'buyers', b.id), b);
+            } catch (e) {
+              console.warn('Buyer seed note:', e);
+            }
+          });
+        }
+      },
+      (err) => {
+        console.warn('Firestore buyers sync note:', err.message);
+      }
+    );
+
+    // 4. Products
+    const unsubProducts = onSnapshot(
+      collection(db, 'products'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Product[] = [];
+          snapshot.forEach((d) => list.push(d.data() as Product));
+          setProducts(list);
+        } else {
+          INITIAL_PRODUCTS.forEach(async (p) => {
+            try {
+              await setDoc(doc(db, 'products', p.id), p);
+            } catch (e) {
+              console.warn('Product seed note:', e);
+            }
+          });
+        }
+      },
+      (err) => {
+        console.warn('Firestore products sync note:', err.message);
+      }
+    );
+
+    return () => {
+      unsubOrders();
+      unsubQuotations();
+      unsubBuyers();
+      unsubProducts();
+    };
+  }, []);
+
   const advanceOrderMilestone = (orderId: string, note?: string) => {
+    let nextMilestoneVal = '';
+    let updatedActivitiesVal: any[] = [];
+    let updatedPaymentStatus = '';
+
     setOrders((prev) => {
       return prev.map((ord) => {
         if (ord.id !== orderId) return ord;
@@ -206,6 +322,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         const nextMilestone = ORDER_MILESTONES_ORDER[currentIdx + 1];
+        nextMilestoneVal = nextMilestone;
         const updatedActivities = [
           ...ord.activities,
           {
@@ -216,6 +333,8 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             updatedBy: currentRole === 'admin' ? 'WeTrade Operations' : currentRole === 'seller' ? 'Seller Representative' : currentRole === 'logistics' ? 'Logistics Partner' : 'Buyer Representative'
           }
         ];
+        updatedActivitiesVal = updatedActivities;
+        updatedPaymentStatus = nextMilestone === 'Delivered' ? 'Completed' : ord.paymentStatus;
 
         // Also update corresponding shipment status if matched
         if (ord.logisticsRequired) {
@@ -246,14 +365,25 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...ord,
           currentMilestone: nextMilestone,
           isDelayed: false,
-          paymentStatus: nextMilestone === 'Delivered' ? 'Completed' : ord.paymentStatus,
+          paymentStatus: updatedPaymentStatus as any,
           activities: updatedActivities
         };
       });
     });
+
+    // Cloud Firestore Sync
+    if (nextMilestoneVal) {
+      updateDoc(doc(db, 'orders', orderId), {
+        currentMilestone: nextMilestoneVal,
+        isDelayed: false,
+        paymentStatus: updatedPaymentStatus,
+        activities: updatedActivitiesVal
+      }).catch((e) => console.warn('Firestore order sync warning:', e));
+    }
   };
 
   const markOrderDelayed = (orderId: string, reason: string) => {
+    let updatedActivitiesVal: any[] = [];
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
@@ -268,6 +398,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             isDelayed: true
           }
         ];
+        updatedActivitiesVal = updatedActivities;
         addToast('Milestone Delay Noted', `Alert logged for ${ord.orderNumber}: ${reason}`, 'warning');
         return {
           ...ord,
@@ -277,20 +408,36 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
       })
     );
+
+    // Sync delay to Firestore
+    updateDoc(doc(db, 'orders', orderId), {
+      isDelayed: true,
+      delayReason: reason,
+      activities: updatedActivitiesVal
+    }).catch((e) => console.warn('Firestore delay note warning:', e));
   };
 
   const updateQuotationStatus = (quotationId: string, newStatus: QuotationStatus) => {
+    let revisionsCountVal = 0;
     setQuotations((prev) =>
       prev.map((q) => {
         if (q.id !== quotationId) return q;
+        const updatedRevisions = newStatus === 'Revised' ? q.revisionsCount + 1 : q.revisionsCount;
+        revisionsCountVal = updatedRevisions;
         addToast('Quotation Status Updated', `Quotation ${q.rfqNumber} updated to ${newStatus}`, 'info');
         return {
           ...q,
           status: newStatus,
-          revisionsCount: newStatus === 'Revised' ? q.revisionsCount + 1 : q.revisionsCount
+          revisionsCount: updatedRevisions
         };
       })
     );
+
+    // Sync quotation to Firestore
+    updateDoc(doc(db, 'quotations', quotationId), {
+      status: newStatus,
+      revisionsCount: revisionsCountVal
+    }).catch((e) => console.warn('Firestore quotation status warning:', e));
   };
 
   const createLogisticsRequest = (req: {
@@ -380,6 +527,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setProducts((prev) => [newProd, ...prev]);
     addToast('Demo Product Listed', `${newProd.name} added to the catalogue.`, 'success');
+    setDoc(doc(db, 'products', newId), newProd).catch((e) => console.warn('Firestore product create warning:', e));
   };
 
   const addBuyerLead = (buyerData: Omit<BuyerLead, 'id' | 'lastFollowUp'>) => {
@@ -391,6 +539,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setBuyers((prev) => [newBuyer, ...prev]);
     addToast('Buyer Lead Registered', `${newBuyer.companyName} recorded in CRM pipeline.`, 'success');
+    setDoc(doc(db, 'buyers', newId), newBuyer).catch((e) => console.warn('Firestore buyer lead create warning:', e));
   };
 
   const toggleTask = (taskId: string) => {

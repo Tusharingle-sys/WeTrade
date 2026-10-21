@@ -36,7 +36,8 @@ interface AuthContextType {
   authError: string | null;
   clearAuthError: () => void;
   login: (email: string, pass: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
+  loginWithGoogle: (chosenRole?: PortalRole) => Promise<void>;
+  updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>;
   registerAccount: (payload: RegisterRequestPayload) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   resendVerification: () => Promise<void>;
@@ -237,8 +238,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Google Login Popup
-  const loginWithGoogle = async () => {
+  // Google Login Popup with instant onboarding and role selection
+  const loginWithGoogle = async (chosenRole?: PortalRole) => {
     setLoading(true);
     setAuthError(null);
     try {
@@ -248,20 +249,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Check if user doc exists
       const userDocRef = doc(db, 'users', user.uid);
       const docSnap = await getDoc(userDocRef);
+      const isBootstrap = user.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
+      const now = new Date().toISOString();
+      const assignedRole: PortalRole = isBootstrap ? 'admin' : (chosenRole || 'seller');
+
       if (!docSnap.exists()) {
-        const isBootstrap = user.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
-        const now = new Date().toISOString();
         const initialProfile: UserProfile = {
           uid: user.uid,
           email: user.email || '',
           displayName: user.displayName || '',
-          companyName: isBootstrap ? 'WeTrade Facilitation HQ' : (user.displayName ? `${user.displayName} Enterprise` : 'New Business'),
+          companyName: isBootstrap ? 'WeTrade Facilitation HQ' : (user.displayName ? `${user.displayName} Enterprise` : 'Business Enterprise'),
           contactPerson: user.displayName || 'Authorized Representative',
           phone: '',
           businessLocation: isBootstrap ? 'Hadapsar, Saswad Rd, Pune, Maharashtra - 411028' : 'India',
-          role: isBootstrap ? 'admin' : 'pending',
-          status: isBootstrap ? 'approved' : 'pending',
-          accountType: 'seller',
+          role: assignedRole,
+          status: 'approved',
+          accountType: isBootstrap ? 'seller' : (assignedRole === 'buyer' ? 'buyer' : assignedRole === 'logistics' ? 'logistics' : 'seller'),
           emailVerified: user.emailVerified,
           createdAt: now,
           updatedAt: now
@@ -274,23 +277,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: user.email,
             createdAt: now
           });
-        } else {
-          // Create corresponding account request
-          const req: AccountRequest = {
-            requestId: user.uid,
-            uid: user.uid,
-            companyName: initialProfile.companyName,
-            contactPerson: initialProfile.contactPerson,
-            email: initialProfile.email,
-            phone: '',
-            businessLocation: initialProfile.businessLocation,
-            requestedAccountType: 'seller',
-            status: 'pending',
-            createdAt: now,
-            updatedAt: now,
-            emailVerified: user.emailVerified
-          };
-          await setDoc(doc(db, 'accountRequests', user.uid), req);
+        }
+      } else {
+        const existingData = docSnap.data() as UserProfile;
+        // If bootstrap admin needs update
+        if (isBootstrap && existingData.role !== 'admin') {
+          await updateDoc(userDocRef, { role: 'admin', status: 'approved', updatedAt: now });
+          await setDoc(doc(db, 'admins', user.uid), { uid: user.uid, email: user.email, createdAt: now });
+        } else if (existingData.status === 'pending') {
+          // One-click instant approval for Google authenticated users
+          const roleToSet = isBootstrap ? 'admin' : (chosenRole || (existingData.role === 'pending' ? 'seller' : existingData.role));
+          await updateDoc(userDocRef, {
+            status: 'approved',
+            role: roleToSet,
+            updatedAt: now
+          });
         }
       }
     } catch (err: any) {
@@ -305,6 +306,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error(msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Update User Profile
+  const updateUserProfile = async (updates: Partial<UserProfile>) => {
+    if (!currentUser) throw new Error('User not authenticated');
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const now = new Date().toISOString();
+    try {
+      await updateDoc(userDocRef, {
+        ...updates,
+        updatedAt: now
+      });
+      setUserProfile((prev) => prev ? { ...prev, ...updates, updatedAt: now } : null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);
     }
   };
 
@@ -566,6 +583,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearAuthError,
         login,
         loginWithGoogle,
+        updateUserProfile,
         registerAccount,
         resetPassword,
         resendVerification,

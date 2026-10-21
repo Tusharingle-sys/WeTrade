@@ -4,6 +4,7 @@ import { useTrade } from '../context/TradeContext';
 import { useAuth } from '../context/AuthContext';
 import { WeTradeLogo } from '../components/common/WeTradeLogo';
 import { AccountManagementModule } from '../components/portal/AccountManagementModule';
+import { MarketIntelligenceModule } from '../components/portal/MarketIntelligenceModule';
 import { PortalRole, OrderMilestone, QuotationStatus } from '../types';
 import {
   LayoutDashboard,
@@ -324,6 +325,7 @@ export const PortalPage: React.FC = () => {
 
     if (isAdmin) {
       items.push(
+        { id: 'marketIntelligence', label: 'Market Intelligence', icon: Sparkles },
         { id: 'accountRequests', label: 'Account Approvals', icon: ShieldCheck, badge: accountRequests.filter((r) => r.status === 'pending').length || undefined },
         { id: 'sellers', label: 'Sellers', icon: Building2 },
         { id: 'products', label: 'Products', icon: Package },
@@ -339,6 +341,7 @@ export const PortalPage: React.FC = () => {
       );
     } else if (effectiveRole === 'seller') {
       items.push(
+        { id: 'marketIntelligence', label: 'Market Intelligence', icon: Sparkles },
         { id: 'products', label: 'My Products', icon: Package },
         { id: 'quotations', label: 'My Quotations', icon: FileSpreadsheet },
         { id: 'orders', label: 'My Orders', icon: ShoppingCart, badge: filteredOrders.length },
@@ -351,6 +354,7 @@ export const PortalPage: React.FC = () => {
       );
     } else if (effectiveRole === 'buyer') {
       items.push(
+        { id: 'marketIntelligence', label: 'Market Intelligence', icon: Sparkles },
         { id: 'products', label: 'Product Catalogue', icon: Package },
         { id: 'quotations', label: 'My Quotations', icon: FileSpreadsheet },
         { id: 'orders', label: 'Purchase Orders', icon: ShoppingCart, badge: filteredOrders.length },
@@ -361,6 +365,7 @@ export const PortalPage: React.FC = () => {
       );
     } else if (effectiveRole === 'logistics') {
       items.push(
+        { id: 'marketIntelligence', label: 'Market Intelligence', icon: Sparkles },
         { id: 'logistics', label: 'Logistics Hub', icon: Truck },
         { id: 'tracking', label: 'Consignment Milestones', icon: MapPin },
         { id: 'orders', label: 'Assigned Orders', icon: ShoppingCart, badge: filteredOrders.length },
@@ -550,6 +555,7 @@ export const PortalPage: React.FC = () => {
 
             <h1 className="text-xs sm:text-base md:text-lg font-black text-[#07145B] uppercase tracking-wide truncate">
               {activeModule === 'dashboard' && 'Trade Overview'}
+              {activeModule === 'marketIntelligence' && 'Market Intelligence & Spot Pricing'}
               {activeModule === 'accountRequests' && 'Account Management & Approvals'}
               {activeModule === 'sellers' && 'Sellers & Producers'}
               {activeModule === 'products' && 'Product Catalogue'}
@@ -1621,6 +1627,11 @@ export const PortalPage: React.FC = () => {
           {/* 13. ACCOUNT MANAGEMENT & APPROVALS (ADMINISTRATOR ONLY) */}
           {activeModule === 'accountRequests' && (
             <AccountManagementModule />
+          )}
+
+          {/* 14. MARKET INTELLIGENCE MODULE (SEARCH GROUNDED) */}
+          {activeModule === 'marketIntelligence' && (
+            <MarketIntelligenceModule />
           )}
 
         </main>

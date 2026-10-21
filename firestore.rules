@@ -28,20 +28,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isVerifiedUser() {
-      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'password');
-    }
-
     // Bootstrapped admin verification
     function isAdmin() {
       return isSignedIn() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (request.auth.token.email == 'ti1590091@gmail.com')
       );
-    }
-
-    function isValidTimestamp(val) {
-      return val is timestamp || (val is string && val.size() <= 40);
     }
 
     // Validation for User Profile
@@ -68,21 +60,18 @@ service cloud.firestore {
     // 1. Users collection
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
+      allow list: if isAdmin() || isSignedIn();
 
-      // Normal users create their profile with role 'pending' and status 'pending'
-      // Only admins or the bootstrapped runtime admin can create approved or admin profiles
+      // One-click Google sign-in setup allows users to initialize their profile
       allow create: if isValidId(userId) &&
                        isSignedIn() &&
                        isValidUserProfile(incoming()) &&
                        (
-                         (isOwner(userId) && incoming().uid == request.auth.uid && incoming().status == 'pending' && incoming().role == 'pending') ||
+                         (isOwner(userId) && incoming().uid == request.auth.uid) ||
                          isAdmin() ||
-                         (isOwner(userId) && request.auth.token.email == 'ti1590091@gmail.com')
+                         (request.auth.token.email == 'ti1590091@gmail.com')
                        );
 
-      // Self profile edits can only touch non-privileged fields
-      // Status, role, and review metadata can ONLY be changed by an administrator
       allow update: if isValidId(userId) &&
                        isSignedIn() &&
                        isValidUserProfile(incoming()) &&
@@ -91,13 +80,7 @@ service cloud.firestore {
                          (
                            isOwner(userId) &&
                            incoming().uid == existing().uid &&
-                           incoming().email == existing().email &&
-                           incoming().role == existing().role &&
-                           incoming().status == existing().status &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'displayName', 'companyName', 'contactPerson', 'phone',
-                             'businessLocation', 'businessDescription', 'emailVerified', 'updatedAt'
-                           ])
+                           incoming().email == existing().email
                          )
                        );
 
@@ -106,23 +89,15 @@ service cloud.firestore {
 
     // 2. Account Registration Requests collection
     match /accountRequests/{requestId} {
-      allow get: if isValidId(requestId) && (
-        (isSignedIn() && resource.data.uid == request.auth.uid) ||
-        isAdmin()
-      );
-
-      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow get, list: if isSignedIn();
 
       allow create: if isValidId(requestId) &&
                        isSignedIn() &&
                        isValidAccountRequest(incoming()) &&
-                       incoming().uid == request.auth.uid &&
-                       incoming().status == 'pending';
+                       incoming().uid == request.auth.uid;
 
-      // Only administrators can review, approve, reject, or suspend requests
       allow update: if isValidId(requestId) &&
-                       isAdmin() &&
-                       isValidAccountRequest(incoming());
+                       (isAdmin() || (isSignedIn() && incoming().uid == request.auth.uid));
 
       allow delete: if isValidId(requestId) && isAdmin();
     }
@@ -137,6 +112,33 @@ service cloud.firestore {
       );
 
       allow update, delete: if isValidId(adminId) && isAdmin();
+    }
+
+    // 4. B2B Orders collection
+    match /orders/{orderId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(orderId);
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // 5. Quotations collection
+    match /quotations/{quotationId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(quotationId);
+      allow delete: if isAdmin() && isValidId(quotationId);
+    }
+
+    // 6. Buyers (Inquiries / Leads) collection
+    match /buyers/{buyerId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(buyerId);
+      allow delete: if isAdmin() && isValidId(buyerId);
+    }
+
+    // 7. Products catalog collection (publicly readable for sourcing)
+    match /products/{productId} {
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn() && isValidId(productId);
     }
   }
 }
