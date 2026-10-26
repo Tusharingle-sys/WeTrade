@@ -5,9 +5,11 @@ import {
   setDoc,
   updateDoc,
   onSnapshot,
-  query
+  query,
+  where
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { useAuth } from './AuthContext';
 import {
   Seller,
   Product,
@@ -90,6 +92,8 @@ const TradeContext = createContext<TradeContextType | undefined>(undefined);
 const STORAGE_KEY = 'wetrade_demo_state_v1';
 
 export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser, userProfile, isAdmin, isApproved, loading: authLoading } = useAuth();
+
   // Initialize state with localStorage if available
   const [currentRole, setCurrentRole] = useState<PortalRole>('admin');
   const [toasts, setToasts] = useState<TradeToast[]>([]);
@@ -204,79 +208,9 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Firestore Live Synchronization for Orders, Quotations, Buyer Inquiries, and Products
+  // Firestore Live Synchronization with Role-Based Scoping and Defensive Error Handling
   useEffect(() => {
-    // 1. Orders
-    const unsubOrders = onSnapshot(
-      collection(db, 'orders'),
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: Order[] = [];
-          snapshot.forEach((d) => list.push(d.data() as Order));
-          setOrders(list);
-        } else {
-          // Auto-seed initial orders to Firestore
-          INITIAL_ORDERS.forEach(async (ord) => {
-            try {
-              await setDoc(doc(db, 'orders', ord.id), ord);
-            } catch (e) {
-              console.warn('Order seed note:', e);
-            }
-          });
-        }
-      },
-      (err) => {
-        console.warn('Firestore orders sync note:', err.message);
-      }
-    );
-
-    // 2. Quotations
-    const unsubQuotations = onSnapshot(
-      collection(db, 'quotations'),
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: Quotation[] = [];
-          snapshot.forEach((d) => list.push(d.data() as Quotation));
-          setQuotations(list);
-        } else {
-          INITIAL_QUOTATIONS.forEach(async (q) => {
-            try {
-              await setDoc(doc(db, 'quotations', q.id), q);
-            } catch (e) {
-              console.warn('Quotation seed note:', e);
-            }
-          });
-        }
-      },
-      (err) => {
-        console.warn('Firestore quotations sync note:', err.message);
-      }
-    );
-
-    // 3. Buyer Leads / Inquiries
-    const unsubBuyers = onSnapshot(
-      collection(db, 'buyers'),
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: BuyerLead[] = [];
-          snapshot.forEach((d) => list.push(d.data() as BuyerLead));
-          setBuyers(list);
-        } else {
-          INITIAL_BUYERS.forEach(async (b) => {
-            try {
-              await setDoc(doc(db, 'buyers', b.id), b);
-            } catch (e) {
-              console.warn('Buyer seed note:', e);
-            }
-          });
-        }
-      },
-      (err) => {
-        console.warn('Firestore buyers sync note:', err.message);
-      }
-    );
-
-    // 4. Products
+    // 1. Products (Publicly readable catalog)
     const unsubProducts = onSnapshot(
       collection(db, 'products'),
       (snapshot) => {
@@ -284,7 +218,8 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const list: Product[] = [];
           snapshot.forEach((d) => list.push(d.data() as Product));
           setProducts(list);
-        } else {
+        } else if (isAdmin) {
+          // Only authenticated administrators seed initial catalog data
           INITIAL_PRODUCTS.forEach(async (p) => {
             try {
               await setDoc(doc(db, 'products', p.id), p);
@@ -295,17 +230,131 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       },
       (err) => {
-        console.warn('Firestore products sync note:', err.message);
+        if (err.code === 'permission-denied') {
+          console.info('[WeTrade] Product catalog: Utilizing default catalog cache.');
+        } else {
+          console.warn('Firestore products sync note:', err.message);
+        }
       }
     );
 
+    // Protected trade collections: strictly require authenticated and approved account access
+    if (authLoading || !currentUser || (!isApproved && !isAdmin)) {
+      return () => {
+        unsubProducts();
+      };
+    }
+
+    // Determine query scoping based on role and ownership
+    let ordersQuery = query(collection(db, 'orders'));
+    let quotationsQuery = query(collection(db, 'quotations'));
+    let buyersQuery = query(collection(db, 'buyers'));
+
+    if (!isAdmin) {
+      const role = userProfile?.role;
+      if (role === 'seller') {
+        ordersQuery = query(collection(db, 'orders'), where('sellerId', '==', currentUser.uid));
+        quotationsQuery = query(collection(db, 'quotations'), where('sellerId', '==', currentUser.uid));
+      } else if (role === 'buyer') {
+        ordersQuery = query(collection(db, 'orders'), where('buyerId', '==', currentUser.uid));
+        quotationsQuery = query(collection(db, 'quotations'), where('buyerId', '==', currentUser.uid));
+        buyersQuery = query(collection(db, 'buyers'), where('email', '==', currentUser.email || ''));
+      } else if (role === 'logistics') {
+        ordersQuery = query(collection(db, 'orders'), where('logisticsPartnerId', '==', currentUser.uid));
+      }
+    }
+
+    // 2. Orders sync
+    const unsubOrders = onSnapshot(
+      ordersQuery,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Order[] = [];
+          snapshot.forEach((d) => list.push(d.data() as Order));
+          setOrders(list);
+        } else if (isAdmin) {
+          INITIAL_ORDERS.forEach(async (ord) => {
+            try {
+              await setDoc(doc(db, 'orders', ord.id), ord);
+            } catch (e) {
+              console.warn('Order seed note:', e);
+            }
+          });
+        }
+      },
+      (err) => {
+        if (err.code === 'permission-denied') {
+          console.info('[WeTrade] Orders sync: Protected trade records restricted by role.');
+        } else {
+          console.warn('Firestore orders sync note:', err.message);
+        }
+      }
+    );
+
+    // 3. Quotations sync
+    const unsubQuotations = onSnapshot(
+      quotationsQuery,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Quotation[] = [];
+          snapshot.forEach((d) => list.push(d.data() as Quotation));
+          setQuotations(list);
+        } else if (isAdmin) {
+          INITIAL_QUOTATIONS.forEach(async (q) => {
+            try {
+              await setDoc(doc(db, 'quotations', q.id), q);
+            } catch (e) {
+              console.warn('Quotation seed note:', e);
+            }
+          });
+        }
+      },
+      (err) => {
+        if (err.code === 'permission-denied') {
+          console.info('[WeTrade] Quotations sync: Protected negotiation records restricted.');
+        } else {
+          console.warn('Firestore quotations sync note:', err.message);
+        }
+      }
+    );
+
+    // 4. Buyer Leads CRM sync (Admins or inquiring buyer)
+    let unsubBuyers = () => {};
+    if (isAdmin || userProfile?.role === 'buyer') {
+      unsubBuyers = onSnapshot(
+        buyersQuery,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const list: BuyerLead[] = [];
+            snapshot.forEach((d) => list.push(d.data() as BuyerLead));
+            setBuyers(list);
+          } else if (isAdmin) {
+            INITIAL_BUYERS.forEach(async (b) => {
+              try {
+                await setDoc(doc(db, 'buyers', b.id), b);
+              } catch (e) {
+                console.warn('Buyer seed note:', e);
+              }
+            });
+          }
+        },
+        (err) => {
+          if (err.code === 'permission-denied') {
+            console.info('[WeTrade] Buyer leads sync: CRM inquiries restricted.');
+          } else {
+            console.warn('Firestore buyers sync note:', err.message);
+          }
+        }
+      );
+    }
+
     return () => {
+      unsubProducts();
       unsubOrders();
       unsubQuotations();
       unsubBuyers();
-      unsubProducts();
     };
-  }, []);
+  }, [currentUser, userProfile?.role, isAdmin, isApproved, authLoading]);
 
   const advanceOrderMilestone = (orderId: string, note?: string) => {
     let nextMilestoneVal = '';
@@ -372,13 +421,19 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     // Cloud Firestore Sync
-    if (nextMilestoneVal) {
+    if (currentUser && (isApproved || isAdmin) && nextMilestoneVal) {
       updateDoc(doc(db, 'orders', orderId), {
         currentMilestone: nextMilestoneVal,
         isDelayed: false,
         paymentStatus: updatedPaymentStatus,
         activities: updatedActivitiesVal
-      }).catch((e) => console.warn('Firestore order sync warning:', e));
+      }).catch((e) => {
+        if (e.code === 'permission-denied') {
+          console.info('[WeTrade] Order milestone update restricted: Insufficient role permissions.');
+        } else {
+          console.warn('Firestore order sync warning:', e.message);
+        }
+      });
     }
   };
 
@@ -410,11 +465,19 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
 
     // Sync delay to Firestore
-    updateDoc(doc(db, 'orders', orderId), {
-      isDelayed: true,
-      delayReason: reason,
-      activities: updatedActivitiesVal
-    }).catch((e) => console.warn('Firestore delay note warning:', e));
+    if (currentUser && (isApproved || isAdmin)) {
+      updateDoc(doc(db, 'orders', orderId), {
+        isDelayed: true,
+        delayReason: reason,
+        activities: updatedActivitiesVal
+      }).catch((e) => {
+        if (e.code === 'permission-denied') {
+          console.info('[WeTrade] Order delay update restricted: Insufficient role permissions.');
+        } else {
+          console.warn('Firestore delay note warning:', e.message);
+        }
+      });
+    }
   };
 
   const updateQuotationStatus = (quotationId: string, newStatus: QuotationStatus) => {
@@ -434,10 +497,18 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
 
     // Sync quotation to Firestore
-    updateDoc(doc(db, 'quotations', quotationId), {
-      status: newStatus,
-      revisionsCount: revisionsCountVal
-    }).catch((e) => console.warn('Firestore quotation status warning:', e));
+    if (currentUser && (isApproved || isAdmin)) {
+      updateDoc(doc(db, 'quotations', quotationId), {
+        status: newStatus,
+        revisionsCount: revisionsCountVal
+      }).catch((e) => {
+        if (e.code === 'permission-denied') {
+          console.info('[WeTrade] Quotation status update restricted: Insufficient role permissions.');
+        } else {
+          console.warn('Firestore quotation status warning:', e.message);
+        }
+      });
+    }
   };
 
   const createLogisticsRequest = (req: {
@@ -527,7 +598,15 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setProducts((prev) => [newProd, ...prev]);
     addToast('Demo Product Listed', `${newProd.name} added to the catalogue.`, 'success');
-    setDoc(doc(db, 'products', newId), newProd).catch((e) => console.warn('Firestore product create warning:', e));
+    if (currentUser && (isApproved || isAdmin)) {
+      setDoc(doc(db, 'products', newId), newProd).catch((e) => {
+        if (e.code === 'permission-denied') {
+          console.info('[WeTrade] Product creation restricted to authorized sellers or administrators.');
+        } else {
+          console.warn('Firestore product create warning:', e.message);
+        }
+      });
+    }
   };
 
   const addBuyerLead = (buyerData: Omit<BuyerLead, 'id' | 'lastFollowUp'>) => {
@@ -539,7 +618,15 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setBuyers((prev) => [newBuyer, ...prev]);
     addToast('Buyer Lead Registered', `${newBuyer.companyName} recorded in CRM pipeline.`, 'success');
-    setDoc(doc(db, 'buyers', newId), newBuyer).catch((e) => console.warn('Firestore buyer lead create warning:', e));
+    if (currentUser && (isApproved || isAdmin)) {
+      setDoc(doc(db, 'buyers', newId), newBuyer).catch((e) => {
+        if (e.code === 'permission-denied') {
+          console.info('[WeTrade] Buyer lead creation restricted.');
+        } else {
+          console.warn('Firestore buyer lead create warning:', e.message);
+        }
+      });
+    }
   };
 
   const toggleTask = (taskId: string) => {

@@ -36,6 +36,17 @@ service cloud.firestore {
       );
     }
 
+    // Verified approved user
+    function isApprovedUser() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved'
+        )
+      );
+    }
+
     // Validation for User Profile
     function isValidUserProfile(data) {
       return data.uid is string && data.uid.size() <= 128 &&
@@ -58,53 +69,72 @@ service cloud.firestore {
     }
 
     // 1. Users collection
+    // PII protected: users cannot list other users' profiles
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin() || isSignedIn();
+      allow list: if isAdmin();
 
-      // One-click Google sign-in setup allows users to initialize their profile
-      allow create: if isValidId(userId) &&
-                       isSignedIn() &&
-                       isValidUserProfile(incoming()) &&
-                       (
-                         (isOwner(userId) && incoming().uid == request.auth.uid) ||
-                         isAdmin() ||
-                         (request.auth.token.email == 'ti1590091@gmail.com')
-                       );
+      // Account registration:
+      // Admins or bootstrap admin can create any profile.
+      // Normal users can ONLY register with role: 'pending' and status: 'pending'.
+      // Self-approval or self-role-assignment is mathematically impossible.
+      allow create: if isValidId(userId) && isSignedIn() && (
+        isAdmin() ||
+        (request.auth.token.email == 'ti1590091@gmail.com') ||
+        (
+          isOwner(userId) &&
+          isValidUserProfile(incoming()) &&
+          incoming().uid == request.auth.uid &&
+          incoming().role == 'pending' &&
+          incoming().status == 'pending'
+        )
+      );
 
-      allow update: if isValidId(userId) &&
-                       isSignedIn() &&
-                       isValidUserProfile(incoming()) &&
-                       (
-                         isAdmin() ||
-                         (
-                           isOwner(userId) &&
-                           incoming().uid == existing().uid &&
-                           incoming().email == existing().email
-                         )
-                       );
+      // Account updates:
+      // Admins can update roles, approval status, and review notes.
+      // Normal users CANNOT alter their own role or status, preventing self-approval.
+      allow update: if isValidId(userId) && isSignedIn() && (
+        isAdmin() ||
+        (request.auth.token.email == 'ti1590091@gmail.com') ||
+        (
+          isOwner(userId) &&
+          isValidUserProfile(incoming()) &&
+          incoming().uid == existing().uid &&
+          incoming().email == existing().email &&
+          incoming().role == existing().role &&
+          incoming().status == existing().status
+        )
+      );
 
       allow delete: if isValidId(userId) && isAdmin();
     }
 
     // 2. Account Registration Requests collection
     match /accountRequests/{requestId} {
-      allow get, list: if isSignedIn();
+      allow get: if isAdmin() || (isSignedIn() && (resource.data.uid == request.auth.uid || requestId == request.auth.uid));
+      allow list: if isAdmin();
 
       allow create: if isValidId(requestId) &&
                        isSignedIn() &&
                        isValidAccountRequest(incoming()) &&
-                       incoming().uid == request.auth.uid;
+                       incoming().uid == request.auth.uid &&
+                       incoming().status == 'pending';
 
-      allow update: if isValidId(requestId) &&
-                       (isAdmin() || (isSignedIn() && incoming().uid == request.auth.uid));
+      allow update: if isValidId(requestId) && isSignedIn() && (
+        isAdmin() ||
+        (
+          incoming().uid == request.auth.uid &&
+          existing().uid == request.auth.uid &&
+          incoming().status == existing().status
+        )
+      );
 
       allow delete: if isValidId(requestId) && isAdmin();
     }
 
     // 3. Trusted Administrators collection
     match /admins/{adminId} {
-      allow get, list: if isSignedIn();
+      allow get, list: if isAdmin();
 
       allow create: if isValidId(adminId) && (
         isAdmin() ||
@@ -115,30 +145,141 @@ service cloud.firestore {
     }
 
     // 4. B2B Orders collection
+    // Protected by ownership and approved participation:
+    // Admin, or approved seller/buyer/logistics partner involved in the order.
     match /orders/{orderId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidId(orderId);
+      function isOrderParty(data) {
+        return isApprovedUser() && (
+          data.sellerId == request.auth.uid ||
+          data.buyerId == request.auth.uid ||
+          (data.logisticsRequired == true && data.logisticsPartnerId == request.auth.uid)
+        );
+      }
+
+      allow get: if isAdmin() || isOrderParty(resource.data);
+      allow list: if isAdmin() || (
+        isSignedIn() && isApprovedUser() && (
+          resource.data.sellerId == request.auth.uid ||
+          resource.data.buyerId == request.auth.uid ||
+          resource.data.logisticsPartnerId == request.auth.uid
+        )
+      );
+
+      allow create: if isValidId(orderId) && (
+        isAdmin() ||
+        (
+          isApprovedUser() &&
+          (incoming().sellerId == request.auth.uid || incoming().buyerId == request.auth.uid)
+        )
+      );
+
+      allow update: if isValidId(orderId) && (
+        isAdmin() ||
+        (
+          isApprovedUser() &&
+          isOrderParty(existing()) &&
+          incoming().id == existing().id &&
+          incoming().orderNumber == existing().orderNumber &&
+          incoming().sellerId == existing().sellerId &&
+          incoming().buyerId == existing().buyerId
+        )
+      );
+
       allow delete: if isAdmin() && isValidId(orderId);
     }
 
     // 5. Quotations collection
+    // Protected by negotiation parties:
+    // Admin, or approved seller/buyer negotiating the quotation.
     match /quotations/{quotationId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidId(quotationId);
+      function isQuotationParty(data) {
+        return isApprovedUser() && (
+          data.sellerId == request.auth.uid ||
+          data.buyerId == request.auth.uid
+        );
+      }
+
+      allow get: if isAdmin() || isQuotationParty(resource.data);
+      allow list: if isAdmin() || (
+        isSignedIn() && isApprovedUser() && (
+          resource.data.sellerId == request.auth.uid ||
+          resource.data.buyerId == request.auth.uid
+        )
+      );
+
+      allow create: if isValidId(quotationId) && (
+        isAdmin() ||
+        (
+          isApprovedUser() &&
+          (incoming().sellerId == request.auth.uid || incoming().buyerId == request.auth.uid)
+        )
+      );
+
+      allow update: if isValidId(quotationId) && (
+        isAdmin() ||
+        (
+          isApprovedUser() &&
+          isQuotationParty(existing()) &&
+          incoming().id == existing().id &&
+          incoming().rfqNumber == existing().rfqNumber &&
+          incoming().sellerId == existing().sellerId &&
+          incoming().buyerId == existing().buyerId
+        )
+      );
+
       allow delete: if isAdmin() && isValidId(quotationId);
     }
 
-    // 6. Buyers (Inquiries / Leads) collection
+    // 6. Buyers (Inquiries / Leads) CRM collection
+    // Protected: Leads and commercial budgets are visible only to Admins or the inquiring buyer.
     match /buyers/{buyerId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidId(buyerId);
+      allow get: if isAdmin() || (
+        isApprovedUser() && (
+          resource.data.buyerId == request.auth.uid ||
+          resource.data.email == request.auth.token.email
+        )
+      );
+
+      allow list: if isAdmin() || (
+        isSignedIn() && isApprovedUser() && (
+          resource.data.buyerId == request.auth.uid ||
+          resource.data.email == request.auth.token.email
+        )
+      );
+
+      allow create: if isValidId(buyerId) && (isAdmin() || (isSignedIn() && isApprovedUser()));
+
+      allow update: if isValidId(buyerId) && (
+        isAdmin() ||
+        (
+          isApprovedUser() &&
+          (existing().buyerId == request.auth.uid || existing().email == request.auth.token.email)
+        )
+      );
+
       allow delete: if isAdmin() && isValidId(buyerId);
     }
 
-    // 7. Products catalog collection (publicly readable for sourcing)
+    // 7. Products catalog collection
+    // Publicly readable for sourcing discovery across agricultural, textile, packaging, and hardware goods.
+    // Writes restricted to Admins and Approved Sellers.
     match /products/{productId} {
       allow get, list: if true;
-      allow create, update, delete: if isSignedIn() && isValidId(productId);
+
+      allow create: if isValidId(productId) && (
+        isAdmin() ||
+        (isApprovedUser() && incoming().sellerId == request.auth.uid)
+      );
+
+      allow update: if isValidId(productId) && (
+        isAdmin() ||
+        (isApprovedUser() && existing().sellerId == request.auth.uid && incoming().sellerId == existing().sellerId)
+      );
+
+      allow delete: if isValidId(productId) && (
+        isAdmin() ||
+        (isApprovedUser() && existing().sellerId == request.auth.uid)
+      );
     }
   }
 }

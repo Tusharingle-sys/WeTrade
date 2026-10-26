@@ -6,12 +6,15 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import fs from 'fs';
 
+import http from 'http';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = http.createServer(app);
 const PORT = 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -168,10 +171,11 @@ Structure your answer to provide:
 
 // Mount Vite or serve static assets
 if (!isProduction) {
+  const isHmrDisabled = process.env.DISABLE_HMR === 'true';
   const vite = await createViteServer({
     server: {
       middlewareMode: true,
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: isHmrDisabled ? false : { server },
     },
     appType: 'spa',
   });
@@ -184,6 +188,6 @@ if (!isProduction) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`WeTrade Server running at http://0.0.0.0:${PORT}`);
 });

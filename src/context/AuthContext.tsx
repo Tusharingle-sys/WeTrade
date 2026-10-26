@@ -20,7 +20,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType, testConnection } from '../lib/firebase';
-import { UserProfile, AccountRequest, RegisterRequestPayload, AccountStatus } from '../types/auth';
+import { UserProfile, AccountRequest, RegisterRequestPayload, AccountStatus, RequestedAccountType } from '../types/auth';
 import { PortalRole } from '../types';
 
 interface AuthContextType {
@@ -254,6 +254,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const assignedRole: PortalRole = isBootstrap ? 'admin' : (chosenRole || 'seller');
 
       if (!docSnap.exists()) {
+        const initialStatus: AccountStatus = isBootstrap ? 'approved' : 'pending';
+        const initialRole: PortalRole | 'pending' = isBootstrap ? 'admin' : 'pending';
+        const initialAccountType: RequestedAccountType = isBootstrap
+          ? 'seller'
+          : chosenRole === 'buyer'
+          ? 'buyer'
+          : chosenRole === 'logistics'
+          ? 'logistics'
+          : 'seller';
+
         const initialProfile: UserProfile = {
           uid: user.uid,
           email: user.email || '',
@@ -262,9 +272,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           contactPerson: user.displayName || 'Authorized Representative',
           phone: '',
           businessLocation: isBootstrap ? 'Hadapsar, Saswad Rd, Pune, Maharashtra - 411028' : 'India',
-          role: assignedRole,
-          status: 'approved',
-          accountType: isBootstrap ? 'seller' : (assignedRole === 'buyer' ? 'buyer' : assignedRole === 'logistics' ? 'logistics' : 'seller'),
+          role: initialRole,
+          status: initialStatus,
+          accountType: initialAccountType,
           emailVerified: user.emailVerified,
           createdAt: now,
           updatedAt: now
@@ -277,21 +287,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: user.email,
             createdAt: now
           });
+        } else {
+          // Register account request for WeTrade administrator review
+          const accountReq: AccountRequest = {
+            requestId: user.uid,
+            uid: user.uid,
+            companyName: initialProfile.companyName,
+            contactPerson: initialProfile.contactPerson,
+            email: initialProfile.email,
+            phone: initialProfile.phone,
+            businessLocation: initialProfile.businessLocation,
+            requestedAccountType: initialAccountType,
+            businessDescription: 'Google Sign-In Account Registration',
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+            emailVerified: user.emailVerified
+          };
+          await setDoc(doc(db, 'accountRequests', user.uid), accountReq);
         }
       } else {
         const existingData = docSnap.data() as UserProfile;
-        // If bootstrap admin needs update
-        if (isBootstrap && existingData.role !== 'admin') {
+        // If bootstrap admin needs role synchronization
+        if (isBootstrap && (existingData.role !== 'admin' || existingData.status !== 'approved')) {
           await updateDoc(userDocRef, { role: 'admin', status: 'approved', updatedAt: now });
           await setDoc(doc(db, 'admins', user.uid), { uid: user.uid, email: user.email, createdAt: now });
-        } else if (existingData.status === 'pending') {
-          // One-click instant approval for Google authenticated users
-          const roleToSet = isBootstrap ? 'admin' : (chosenRole || (existingData.role === 'pending' ? 'seller' : existingData.role));
-          await updateDoc(userDocRef, {
-            status: 'approved',
-            role: roleToSet,
-            updatedAt: now
-          });
         }
       }
     } catch (err: any) {
@@ -314,12 +334,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser) throw new Error('User not authenticated');
     const userDocRef = doc(db, 'users', currentUser.uid);
     const now = new Date().toISOString();
+    // Least privilege: regular users cannot alter their own role, status, or review metadata
+    const sanitizedUpdates = { ...updates };
+    if (!isAdmin) {
+      delete sanitizedUpdates.role;
+      delete sanitizedUpdates.status;
+      delete sanitizedUpdates.reviewNotes;
+      delete sanitizedUpdates.reviewedAt;
+      delete sanitizedUpdates.reviewedBy;
+      delete sanitizedUpdates.uid;
+      delete sanitizedUpdates.email;
+    }
     try {
       await updateDoc(userDocRef, {
-        ...updates,
+        ...sanitizedUpdates,
         updatedAt: now
       });
-      setUserProfile((prev) => prev ? { ...prev, ...updates, updatedAt: now } : null);
+      setUserProfile((prev) => prev ? { ...prev, ...sanitizedUpdates, updatedAt: now } : null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);
     }
